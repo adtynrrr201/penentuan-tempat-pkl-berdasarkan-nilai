@@ -15,4 +15,7 @@ data_dummy_tjkt_25_siswa.xlsx
 kuesioner_minat_dummy_25_siswa.xlsx
 *.log
 .omo/
+.codegraph/
+.codegraph
+
 
