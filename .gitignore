@@ -1,4 +1,5 @@
 output/
+outputs/
 .venv/
 __pycache__/
 *.pyc
@@ -10,4 +11,8 @@ htmlcov/
 dataset_raport.xlsx
 dataset_kuesioner.xlsx
 dataset_dudi.xlsx
+data_dummy_tjkt_25_siswa.xlsx
+kuesioner_minat_dummy_25_siswa.xlsx
 *.log
+.omo/
+
