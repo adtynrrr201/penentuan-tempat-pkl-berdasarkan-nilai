@@ -1,21 +1,29 @@
-output/
-outputs/
-.venv/
+# Python
 __pycache__/
+*.py/
 *.pyc
 *.pyo
+.venv/
 .pytest_cache/
 .coverage
 htmlcov/
-.DS_Store
+
+# Output & Reports
+output/
+outputs/
+
+# Data & Excel Files
+*.xlsx
 dataset_raport.xlsx
 dataset_kuesioner.xlsx
 dataset_dudi.xlsx
 data_dummy_tjkt_25_siswa.xlsx
 kuesioner_minat_dummy_25_siswa.xlsx
+
+# System & IDE / Agent Logs
+.DS_Store
 *.log
 .omo/
 .codegraph/
+.codegraph/
 .codegraph
-
-
