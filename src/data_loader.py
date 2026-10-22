@@ -8,6 +8,42 @@ import config
 
 SISWA_REQUIRED = ["ID_Siswa"] + config.FEATURE_COLS
 DUDI_REQUIRED = ["Nama_DUDI", "Networking", "Support", "Server_Cloud", "Programming", "Cybersecurity"]
+SIKAP_COLS = ["Kedisiplinan", "KerjaSama"]
+DUDI_COLS = ["Networking", "Support", "Server_Cloud", "Programming", "Cybersecurity"]
+
+
+def _drop_out_of_range(df: pd.DataFrame, checks: list[tuple[str, float, float]], label: str) -> tuple[pd.DataFrame, list[str]]:
+    """Drop baris dengan nilai di luar rentang / NaN pada kolom numerik. Return (df_clean, warnings)."""
+    warns: list[str] = []
+    if df.empty:
+        return df, warns
+    mask_invalid = pd.Series(False, index=df.index)
+    for col, lo, hi in checks:
+        if col not in df.columns:
+            warns.append(f"{label}: kolom {col} tidak ditemukan")
+            continue
+        bad = ((df[col] < lo) | (df[col] > hi) | df[col].isna())
+        if bad.any():
+            warns.append(f"{label} {col}: {bad.sum()} nilai di luar {lo}–{hi}/NaN → baris di-drop")
+        mask_invalid |= bad
+    before = len(df)
+    if mask_invalid.any():
+        df = df[~mask_invalid].copy()
+        warns.append(f"{label}: drop {mask_invalid.sum()} baris invalid (dari {before} → {len(df)})")
+    return df, warns
+
+
+def _drop_duplicate_ids(df: pd.DataFrame, label: str) -> tuple[pd.DataFrame, list[str]]:
+    """Drop duplikat ID_Siswa (keep first). Return (df_clean, warnings)."""
+    warns: list[str] = []
+    if df.empty or "ID_Siswa" not in df.columns:
+        return df, warns
+    dup = df.duplicated(subset="ID_Siswa", keep="first")
+    if dup.any():
+        ids = sorted(df.loc[dup, "ID_Siswa"].astype(str).unique().tolist())
+        warns.append(f"{label}: {dup.sum()} duplikat ID_Siswa {ids[:5]} → keep first")
+        df = df[~dup].copy()
+    return df, warns
 
 
 def _coerce_numeric(df: pd.DataFrame, cols: list[str]) -> tuple[pd.DataFrame, list[str]]:
@@ -75,32 +111,40 @@ def validate_input(df: pd.DataFrame, is_siswa: bool = True) -> tuple[pd.DataFram
     return df, warns
 
 
-def load_data(siswa_path: str | Path = config.INPUT_SISWA, dudi_path: str | Path = config.INPUT_DUDI):
-    """Load kedua Excel. Return (df_siswa, df_dudi, warnings).
+def load_data(raport_path: str | Path = "data/raw/data_dummy_tjkt_25_siswa.xlsx",
+            kuesioner_path: str | Path = "data/raw/data_dummy_tjkt_25_siswa.xlsx"):
+    raport_path = Path(raport_path)
+    if not raport_path.exists():
+        raise FileNotFoundError(f"File raport tidak ditemukan: {raport_path}")
+    df = pd.read_excel(raport_path, sheet_name=0, engine="openpyxl")
+    return df, df
+    warns.extend(w7)
 
-    Tidak crash pada file hilang — raise FileNotFoundError dengan pesan jelas.
-    """
-    warns: list[str] = []
-    siswa_path = Path(siswa_path)
-    dudi_path = Path(dudi_path)
+    # merge via ID_Siswa (inner) — ID yang hanya ada di satu sisi di-drop
+    if "ID_Siswa" not in df_r.columns or "ID_Siswa" not in df_k.columns:
+        warns.append("Kolom ID_Siswa hilang di raport/kuesioner — hasil merge kosong")
+        df_siswa = pd.DataFrame()
+    else:
+        ids_r = set(df_r["ID_Siswa"].astype(str))
+        ids_k = set(df_k["ID_Siswa"].astype(str))
+        only_r = sorted(ids_r - ids_k)
+        only_k = sorted(ids_k - ids_r)
+        if only_r:
+            warns.append(f"Merge: {len(only_r)} ID hanya ada di raport (contoh: {only_r[:5]}) → di-drop")
+        if only_k:
+            warns.append(f"Merge: {len(only_k)} ID hanya ada di kuesioner (contoh: {only_k[:5]}) → di-drop")
+        df_siswa = df_r.merge(df_k, on="ID_Siswa", how="inner")
+        # urutan kolom stabil: ID, Nama, 6 nilai, 4 minat, sikap, guru + ekstra
+        base = (["ID_Siswa", "Nama"] + config.NILAI_COLS + config.MINAT_COLS
+                + SIKAP_COLS + ["Penilaian_Guru"])
+        ordered = [c for c in base if c in df_siswa.columns]
+        extra = [c for c in df_siswa.columns if c not in ordered]
+        df_siswa = df_siswa[ordered + extra].copy()
 
-    if not siswa_path.exists():
-        raise FileNotFoundError(f"File siswa tidak ditemukan: {siswa_path} — jalankan generate_dummy_data.py")
-    if not dudi_path.exists():
-        raise FileNotFoundError(f"File DUDI tidak ditemukan: {dudi_path} — jalankan generate_dummy_data.py")
-
-    df_siswa = pd.read_excel(siswa_path, sheet_name=0, engine="openpyxl")
-    df_dudi = pd.read_excel(dudi_path, sheet_name=0, engine="openpyxl")
-
-    # coerce numeric
-    df_siswa, w1 = _coerce_numeric(df_siswa, config.FEATURE_COLS)
-    df_dudi, w2 = _coerce_numeric(df_dudi, ["Networking", "Support", "Server_Cloud", "Programming", "Cybersecurity"])
-    warns.extend(w1)
-    warns.extend(w2)
-
-    df_siswa, w3 = validate_input(df_siswa, is_siswa=True)
-    df_dudi, w4 = validate_input(df_dudi, is_siswa=False)
-    warns.extend(w3)
-    warns.extend(w4)
+    # validasi akhir df gabungan (FEATURE_COLS) + DUDI
+    df_siswa, w8 = validate_input(df_siswa, is_siswa=True)
+    df_dudi, w9 = validate_input(df_dudi, is_siswa=False)
+    warns.extend(w8)
+    warns.extend(w9)
 
     return df_siswa, df_dudi, warns

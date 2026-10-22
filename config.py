@@ -18,6 +18,24 @@ FEATURE_COLS = [
     "Minat_Cybersecurity",
 ]
 
+# Kelompok kolom per sumber file (join via ID_Siswa)
+NILAI_COLS = [
+    "Programming_X",
+    "Software_X",
+    "SistemOperasi_XI",
+    "Jaringan_XI",
+    "Troubleshooting_XI",
+    "Keamanan_XI",
+]
+MINAT_COLS = [
+    "Minat_Programming",
+    "Minat_Networking",
+    "Minat_Support",
+    "Minat_Cybersecurity",
+]
+RAPORT_COLS = ["ID_Siswa", "Nama"] + NILAI_COLS + ["Kedisiplinan", "KerjaSama", "Penilaian_Guru"]
+KUESIONER_COLS = ["ID_Siswa"] + MINAT_COLS
+
 # DBSCAN — default 2.5 memberi 2-3 cluster pada dummy n=40 (StandardScaler 10D)
 # Tuning: lihat k_distance_graph.png lalu ubah EPS; +0.5 → cluster lebih besar, -0.5 → lebih banyak noise
 EPS = 2.5
@@ -26,7 +44,8 @@ K_DISTANCE_K = 2 * len(FEATURE_COLS)  # 20 — untuk k-distance graph (visual sa
 RANDOM_STATE = 42
 
 # Paths
-INPUT_SISWA = "dataset_siswa.xlsx"
+INPUT_RAPORT = "dataset_raport.xlsx"
+INPUT_KUESIONER = "dataset_kuesioner.xlsx"
 INPUT_DUDI = "dataset_dudi.xlsx"
 OUTPUT_DIR = "output"
 

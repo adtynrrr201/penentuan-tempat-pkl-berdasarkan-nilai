@@ -1,0 +1,70 @@
+# Konfigurasi Pipeline Skripsi S1 Teknik Informatika
+# Pemetaan Kecenderungan Bidang Kompetensi dan Minat Siswa Kelas XI TJKT
+
+project:
+  title: "Pemetaan Kecenderungan Bidang Kompetensi dan Minat Siswa Kelas XI TJKT"
+  author_note: "DATA SINTETIS, BUKAN DATA SISWA"
+  n_students: 25
+  seed: 42
+
+paths:
+  data_raw_dir: "data/raw"
+  data_dummy_dir: "data/dummy"
+  data_processed_dir: "data/processed"
+  output_dir: "outputs"
+  figures_dir: "outputs/figures"
+  tables_dir: "outputs/tables"
+  logs_dir: "outputs/logs"
+
+data_input:
+  path: "data/raw/data_dummy_tjkt_25_siswa.xlsx"
+  missing_handling: "mean"
+  kuesioner_path: "data/raw/kuesioner_minat_dummy_25_siswa.xlsx"
+
+fields:
+  competency_fields:
+    - "jaringan_dasar"
+    - "administrasi_jaringan"
+    - "technical_support"
+  interest_fields:
+    - "minat_jaringan"
+    - "minat_admin"
+    - "minat_support"
+
+mapping:
+  competency:
+    jaringan_dasar: ["TJK_II"]
+    administrasi_jaringan: ["NA_Muda_III"]
+    technical_support: ["TS_II"]
+  interest:
+    minat_jaringan: ["JAR_1", "JAR_2", "JAR_3"]
+    minat_admin: ["ADM_1", "ADM_2", "ADM_3"]
+    minat_support: ["SUP_1", "SUP_2", "SUP_3"]
+  pplg_prefix: "PPLG_"
+
+preprocessing:
+  scaler: "standard" # options: "standard", "minmax"
+  iqr_multiplier: 1.5
+
+kmeans:
+  k_values: [2, 3, 4]
+  n_init: 50
+  random_state: 42
+
+hierarchical:
+  linkage_method: "ward"
+  metric: "euclidean"
+
+dbscan:
+  min_samples_list: [3, 4]
+  eps_grid_steps: 10
+  r_table_threshold: 0.396
+
+stability:
+  kmeans_seeds: 100
+  subsample_ratio: 0.8
+  subsample_iterations: 50
+  dbscan_eps_variation: 0.1
+
+rater_validation:
+  template_path: "outputs/tables/template_penilai.csv"

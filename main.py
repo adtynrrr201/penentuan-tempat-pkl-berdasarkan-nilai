@@ -1,140 +1,177 @@
-#!/usr/bin/env python3
-"""Orkestrasi 12 langkah pipeline DBSCAN PKL.
+#!/usr/bin/env python
+# coding: utf-8
 
-Usage:
-    python main.py
-    python main.py --siswa dataset_siswa.xlsx --dudi dataset_dudi.xlsx --eps 0.7 --min-samples 5
-"""
-import argparse
-import warnings
+# # Pipeline Pemetaan Kecenderungan Bidang PKL Siswa Kelas XI TJKT
+# Notebook interaktif ini berisi 12 langkah alur kerja lengkap (Load, Validasi, Kuesioner, Preprocessing, Klasterisasi K-Means, Hierarchical Ward, DBSCAN, Stabilitas, Validasi, Profiling, PPLG, dan Export).
+
+# ## 1. Load Data & Validasi Schema
+
+# In[3]:
+
+
+import pandas as pd
+import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-import config
+from src.config import config
 from src.data_loader import load_data
-from src.preprocessing import preprocess, scale_features
-from src.dbscan_runner import k_distance_graph, run_dbscan
-from src.profiling import profile_clusters, detect_noise
-from src.validation import silhouette_score_wrap, qualitative_validation
-from src.matching import match_to_dudi
-from src.matching_topsis import topsis_rank
-from src.visualization import plot_clusters
-from src.export import export_results
+from src.validate import validate_data
+
+df_siswa, df_kuesioner = load_data()
+df_valid, problem_report = validate_data(df_siswa)
+print(f"Jumlah baris valid: {len(df_valid)}")
+print(problem_report)
 
 
-def main(siswa: str = config.INPUT_SISWA, dudi: str = config.INPUT_DUDI,
-         eps: float | None = None, min_samples: int | None = None,
-         matching: str = "euclidean"):
-    eps = eps if eps is not None else config.EPS
-    min_samples = min_samples if min_samples is not None else config.MIN_SAMPLES
+# ## 2. Analisis Kuesioner (Cronbach Alpha & Item-Total Correlation)
 
-    print("=== Pipeline DBSCAN PKL — 12 Langkah ===\n")
-
-    # 1-2 load & validate
-    print("[1-2] Load & validasi data...")
-    df_siswa, df_dudi, warns = load_data(siswa, dudi)
-    for w in warns:
-        print(f"  warn: {w}")
-    print(f"  siswa: {len(df_siswa)} baris, dudi: {len(df_dudi)} baris")
-    if df_siswa.empty:
-        print("[error] Tidak ada data siswa valid — abort")
-        return 1
-
-    # 2-3 preprocess & scaler
-    print("\n[2] Preprocessing — pilih 10 fitur inti...")
-    X_raw, cols = preprocess(df_siswa)
-    print(f"  fitur: {cols}")
-
-    print("[3] Standardisasi (StandardScaler)...")
-    X_scaled, scaler = scale_features(X_raw)
-
-    # 4 k-distance
-    print(f"\n[4] k-distance graph (k={config.K_DISTANCE_K})...")
-    k_dist, reco = k_distance_graph(X_scaled)
-    print(f"  rekomendasi eps: {reco:.4f} (pakai eps={eps})")
-
-    # 5 DBSCAN
-    print(f"\n[5] DBSCAN eps={eps} min_samples={min_samples}...")
-    labels = run_dbscan(X_scaled, eps=eps, min_samples=min_samples)
-    from collections import Counter
-    cnt = Counter(labels)
-    n_cluster = len([k for k in cnt if k != -1])
-    n_noise = cnt.get(-1, 0)
-    print(f"  cluster: {n_cluster}, noise: {n_noise}, distribusi: {dict(cnt)}")
-    if n_cluster == 0:
-        print("  warn: semua noise — coba naikkan eps atau turunkan min_samples")
-    if n_cluster == 1 and n_noise == 0:
-        print("  warn: semua jadi 1 cluster — coba turunkan eps")
-
-    # 6 silhouette
-    print("\n[6] Validasi kuantitatif — Silhouette...")
-    sil = silhouette_score_wrap(X_scaled, labels)
-    if sil is None:
-        print("  silhouette: N/A (hanya <2 cluster, exclude noise)")
-    else:
-        print(f"  silhouette: {sil:.4f}")
-
-    # 7 profil
-    print("\n[7] Profilisasi cluster...")
-    profil = profile_clusters(df_siswa, labels)
-    if profil.empty:
-        print("  (tidak ada cluster — semua noise)")
-    else:
-        print(profil.to_string())
-
-    # 8 noise
-    print("\n[8] Deteksi noise...")
-    noise_df = detect_noise(df_siswa, labels)
-    print(f"  noise: {len(noise_df)} siswa")
-    if not noise_df.empty:
-        print(noise_df[["ID_Siswa"] + config.FEATURE_COLS[:3]].head(10).to_string(index=False))
-
-    # 9 matching DUDI
-    mode = matching.lower()
-    print(f"\n[9] Matching ke DUDI ({mode})...")
-    if mode == "topsis":
-        print("  WARNING: Mode TOPSIS eksperimen — belum divalidasi dengan pairwise matrix asli. Jangan gunakan sebagai hasil resmi BAB 4 tanpa persetujuan pembimbing.")
-        dudi_match = topsis_rank(profil, df_dudi)
-        for cl, info in dudi_match.items():
-            print(f"  Cluster {cl} → {info['Nama_DUDI']} (skor {info['Skor']}, jarak {info['Jarak']}) rank2={info['ranking'][1] if len(info['ranking'])>1 else '-'} gap={info['gap_terbesar']}")
-    else:
-        dudi_match = match_to_dudi(profil, df_dudi)
-        for cl, info in dudi_match.items():
-            print(f"  Cluster {cl} → {info['Nama_DUDI']} (jarak {info['Jarak']})")
-
-    # 10 validasi kualitatif
-    print("\n[10] Validasi kualitatif vs Penilaian_Guru...")
-    qual = qualitative_validation(df_siswa, labels, profil)
-    if qual is None:
-        print("  N/A — Penilaian_Guru kosong atau tidak ada cluster")
-    else:
-        print(f"  kesesuaian: {qual['accuracy']:.1%} ({qual['n_match']}/{qual['n_total']}), kappa={qual['kappa']}")
-        print(f"  mapping: {qual['mapping']}")
-
-    # 11 visualisasi
-    print("\n[11] Visualisasi cluster (PCA)...")
-    p = plot_clusters(X_scaled, labels)
-    print(f"  disimpan: {p}")
-
-    # 12 export
-    print("\n[12] Export hasil...")
-    paths = export_results(df_siswa, labels, profil, dudi_match)
-    for k, v in paths.items():
-        print(f"  {k}: {v}")
-    print(f"  k_distance_graph: {config.OUTPUT_FILES['k_distance']}")
-    print(f"  cluster_plot: {config.OUTPUT_FILES['cluster_plot']}")
-
-    print("\n=== Selesai ===")
-    if sil is not None:
-        print(f"Silhouette={sil:.3f} | Cluster={n_cluster} Noise={n_noise}")
-    return 0
+# In[ ]:
 
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Pipeline DBSCAN PKL")
-    ap.add_argument("--siswa", default=config.INPUT_SISWA)
-    ap.add_argument("--dudi", default=config.INPUT_DUDI)
-    ap.add_argument("--eps", type=float, default=None)
-    ap.add_argument("--min-samples", type=int, default=None, dest="min_samples")
-    ap.add_argument("--matching", choices=["euclidean", "topsis"], default="euclidean", help="Metode matching DUDI (default euclidean; topsis eksperimen)")
-    args = ap.parse_args()
-    raise SystemExit(main(siswa=args.siswa, dudi=args.dudi, eps=args.eps, min_samples=args.min_samples, matching=args.matching))
+from src.questionnaire import analyze_questionnaire
+reliability_df = analyze_questionnaire(df_valid)
+print(reliability_df)
+
+
+# ## 3. Ekstraksi Fitur & Preprocessing (IQR Outlier & StandardScaler)
+
+# In[ ]:
+
+
+from src.features import extract_features
+from src.preprocess import preprocess, scale_features
+
+X_raw, df_features = extract_features(df_valid)
+X_clean, outliers = preprocess(df_features)
+X_scaled, scaler = scale_features(X_clean)
+print(f"Dimensi data scaled: {X_scaled.shape}")
+print(f"Jumlah outlier terdeteksi via IQR: {len(outliers)}")
+
+
+# ## 4. K-Means Clustering (k=2..4)
+
+# In[ ]:
+
+
+from src.kmeans_model import run_kmeans_pipeline
+kmeans_results = run_kmeans_pipeline(X_scaled)
+best_k = max(kmeans_results, key=lambda k: kmeans_results[k]["silhouette"])
+best_kmeans_labels = kmeans_results[best_k]["labels"]
+print(f"K-Means terbaik (k={best_k})")
+
+
+# ## 5. Hierarchical Clustering (Ward Linkage)
+
+# In[ ]:
+
+
+from src.hierarchical_model import run_hierarchical_pipeline
+hier_result = run_hierarchical_pipeline(X_scaled, k_target=best_k)
+hier_labels = hier_result["labels"]
+cophenetic_c = hier_result["cophenetic_correlation"]
+print(f"Hierarchical Ward selesai. Cophenetic c = {cophenetic_c:.4f}")
+
+
+# ## 6. DBSCAN Clustering & k-Distance Graph
+
+# In[ ]:
+
+
+from src.dbscan_runner import run_dbscan, k_distance_graph
+k_distance_graph(X_scaled)
+dbscan_labels = run_dbscan(X_scaled)
+n_noise = sum(dbscan_labels == -1)
+print(f"Jumlah noise DBSCAN: {n_noise}")
+
+
+# ## 7. Evaluasi Kestabilan & Kesepakatan Klaster
+
+# In[ ]:
+
+
+from src.stability import evaluate_kmeans_stability, evaluate_subsample_stability
+from src.agreement import compute_agreement
+
+km_stab = evaluate_kmeans_stability(X_scaled, best_kmeans_labels)
+sub_stab = evaluate_subsample_stability(X_scaled, best_k)
+agreement = compute_agreement(best_kmeans_labels, hier_labels)
+
+print("Stabilitas K-Means (100 seed):", km_stab)
+print("Stabilitas Subsample (80%):", sub_stab)
+print("Kesepakatan K-Means vs Hierarchical (ARI):", agreement["ARI"])
+
+
+# ## 8. Profiling Cluster & Pemetaan Kecenderungan Bidang
+
+# In[ ]:
+
+
+from src.profiling import profile_and_label_clusters
+profile_df, df_mapped = profile_and_label_clusters(df_features, best_kmeans_labels)
+print(profile_df)
+print(df_mapped[["kode_siswa", "kode_siswa", "cluster", "kecenderungan_bidang"]].head(10))
+
+
+# ## 9. Analisis Tambahan Nilai PPLG Kelas 10
+
+# In[ ]:
+
+
+from src.pplg_analysis import analyze_pplg_scores
+pplg_stats = analyze_pplg_scores(df_mapped, best_kmeans_labels)
+print(pplg_stats)
+
+
+# ## 10. Pembuatan Template Penilai (Rater Validation)
+
+# In[ ]:
+
+
+from src.rater_validation import generate_rater_template
+template_path = generate_rater_template(df_mapped, "outputs/tables/template_penilai.csv")
+print(f"Template penilai berhasil dibuat di: {template_path}")
+
+
+# ## 11. Export Hasil Lengkap ke Excel
+
+# In[ ]:
+
+
+from src.report import export_pipeline_results
+export_paths = export_pipeline_results(df_mapped, profile_df, pplg_stats)
+print("Export berhasil:", export_paths)
+
+
+# In[ ]:
+
+
+# ## 13. Visualisasi Grafik Interaktif untuk Penilaian Penempatan PKL
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set style
+sns.set_theme(style="whitegrid")
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# 1. Plot Distribusi Kecenderungan Bidang
+sns.countplot(data=df_mapped, x="kecenderungan_bidang", ax=axes[0], palette="viridis")
+axes[0].set_title("Distribusi Kecenderungan Bidang PKL")
+axes[0].set_xlabel("Kecenderungan Bidang")
+axes[0].set_ylabel("Jumlah Siswa")
+axes[0].tick_params(axis='x', rotation=15)
+
+# 2. Plot Perbandingan Komponen per Cluster
+cluster_melt = df_mapped.melt(id_vars=["kode_siswa", "cluster"], 
+                              value_vars=["komp_jaringan", "komp_admin", "komp_support"],
+                              var_name="Kompetensi", value_name="Nilai")
+sns.boxplot(data=cluster_melt, x="Kompetensi", y="Nilai", hue="cluster", ax=axes[1], palette="Set2")
+axes[1].set_title("Distribusi Nilai Kompetensi berdasarkan Cluster")
+axes[1].set_xlabel("Jenis Kompetensi")
+axes[1].set_ylabel("Nilai Rata-rata")
+
+plt.tight_layout()
+plt.savefig("outputs/figures/grafik_analisis_penilaian.png", dpi=300)
+plt.show()
+

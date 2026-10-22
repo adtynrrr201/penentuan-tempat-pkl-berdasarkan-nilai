@@ -7,6 +7,7 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
-dataset_siswa.xlsx
+dataset_raport.xlsx
+dataset_kuesioner.xlsx
 dataset_dudi.xlsx
 *.log
